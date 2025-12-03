@@ -6,8 +6,6 @@ use teloxide::prelude::*;
 use teloxide::requests::Requester;
 use teloxide::types::InputFile;
 use tokio::task;
-use tokio::time::{Duration, sleep};
-use walkdir::WalkDir;
 
 async fn generate_thumbnail(video_path: String) -> Option<InputFile> {
     task::spawn_blocking(move || {
@@ -146,90 +144,67 @@ async fn get_caption(file_path: PathBuf) -> String {
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
+    let args: Vec<String> = std::env::args().collect();
+    let path = PathBuf::from(&args[1]);
+    log::info!("File: {:?}", &path);
     let _chat_id = std::env::var("TELEGOY_CHAT_ID").unwrap();
     let chat_id = _chat_id.clone();
     log::info!("Starting file uploader bot...");
 
     let bot = Bot::from_env().set_api_url(reqwest::Url::parse("http://localhost:8081").unwrap());
 
-    log::info!("Scanning current directory recursively for files...");
+    let input_file = InputFile::file(&path);
+    // let relative_str = path.display().to_string();
 
-    let files: Vec<PathBuf> = task::spawn_blocking(|| {
-        WalkDir::new(".")
-            .sort_by_file_name()
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().is_file())
-            .map(|e| e.path().to_path_buf())
-            .collect()
-    })
-    .await
-    .unwrap();
+    let ext = path
+        .extension()
+        .and_then(|os| os.to_str())
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
 
-    log::info!("Found {} files. Starting upload...", files.len());
+    let is_image = ["jpg", "jpeg", "png"].contains(&ext.as_str());
+    let is_video = [
+        "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "mpg", "mpeg", "3gp",
+    ]
+    .contains(&ext.as_str());
 
-    for path in files {
-        // let Ok(input_file) = InputFile::file(&path) else {
-        //     continue;
-        // };
+    let _ = if is_image {
+        bot.send_photo(chat_id.clone(), input_file.clone())
+            // .caption(relative_str.strip_prefix("./").unwrap())
+            .await
+    } else if is_video {
+        let thumbnail = generate_thumbnail(path.display().to_string()).await;
+        let (width, height, duration) = get_video_metadata(path.display().to_string()).await;
 
-        let input_file = InputFile::file(&path);
-        let relative_str = path.display().to_string();
+        let mut req = bot
+            .send_video(chat_id.clone(), input_file.clone())
+            .caption(get_caption(path).await)
+            .supports_streaming(true);
 
-        let ext = path
-            .extension()
-            .and_then(|os| os.to_str())
-            .map(|s| s.to_lowercase())
-            .unwrap_or_default();
-
-        let is_image = ["jpg", "jpeg", "png"].contains(&ext.as_str());
-        let is_video = [
-            "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "mpg", "mpeg", "3gp",
-        ]
-        .contains(&ext.as_str());
-
-        let send_result = if is_image {
-            bot.send_photo(chat_id.clone(), input_file.clone())
-                // .caption(relative_str.strip_prefix("./").unwrap())
-                .await
-        } else if is_video {
-            let thumbnail = generate_thumbnail(path.to_string_lossy().to_string()).await;
-            let (width, height, duration) =
-                get_video_metadata(path.to_string_lossy().to_string()).await;
-
-            let mut req = bot
-                .send_video(chat_id.clone(), input_file.clone())
-                .caption(get_caption(path).await)
-                .supports_streaming(true);
-
-            if let Some(thumb) = thumbnail {
-                req = req.thumbnail(thumb);
-            }
-            if let Some(w) = width {
-                req = req.width(w as u32);
-            }
-            if let Some(h) = height {
-                req = req.height(h as u32);
-            }
-            if let Some(d) = duration {
-                req = req.duration(d as u32);
-            }
-
-            req.await
-        } else {
-            continue;
-        };
-
-        if send_result.is_err() {
-            log::error!(
-                "Failed to upload: {}",
-                relative_str.strip_prefix("./").unwrap()
-            );
+        if let Some(thumb) = thumbnail {
+            req = req.thumbnail(thumb);
+        }
+        if let Some(w) = width {
+            req = req.width(w as u32);
+        }
+        if let Some(h) = height {
+            req = req.height(h as u32);
+        }
+        if let Some(d) = duration {
+            req = req.duration(d as u32);
         }
 
-        // Respect rate limits – ~1 message/sec is very safe for media
-        sleep(Duration::from_millis(1100)).await;
-    }
+        req.await
+    } else {
+        panic!()
+    };
 
-    log::info!("All files uploaded successfully!");
+    // if send_result.is_err() {
+    //     log::error!(
+    //         "Failed to upload: {}",
+    //         relative_str.strip_prefix("./").unwrap()
+    //     );
+    // }
+
+    log::info!("File uploaded successfully");
 }
