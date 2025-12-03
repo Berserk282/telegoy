@@ -15,6 +15,9 @@ async fn generate_thumbnail(video_path: String) -> Option<InputFile> {
 
         let success = Command::new("ffmpeg")
             .args([
+                "-hide_banner",
+                "-v",
+                "error",
                 "-y",
                 "-i",
                 &video_path,
@@ -130,147 +133,103 @@ async fn get_video_metadata(video_path: String) -> (Option<u32>, Option<u32>, Op
     .unwrap_or((None, None, None))
 }
 
+async fn get_caption(file_path: PathBuf) -> String {
+    task::spawn_blocking(move || {
+        // opens a file with the same name as the video file but with a .txt extension and returns its content as a string
+        let caption_path = file_path.with_extension("txt");
+        return std::fs::read_to_string(&caption_path).unwrap();
+    })
+    .await
+    .unwrap_or(String::from(""))
+}
+
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
+    let _chat_id = std::env::var("TELEGOY_CHAT_ID").unwrap();
+    let chat_id = _chat_id.clone();
     log::info!("Starting file uploader bot...");
 
     let bot = Bot::from_env().set_api_url(reqwest::Url::parse("http://localhost:8081").unwrap());
 
-    // bot.send_message(chat_id, "All files uploaded successfully!")
-    //     .await
-    //     .ok();
+    log::info!("Scanning current directory recursively for files...");
 
-    teloxide::repl(bot, |bot: Bot, msg: Message| async move {
-        if msg.text() == Some("/upload_all") {
-            // Optional security – only you can trigger the upload
-            // Change this to your Telegram user ID
-            if let Some(user) = msg.from {
-                if user.id.0 != 6681565302 {
-                    // <<< YOUR USER ID HERE
-                    return respond(());
-                }
+    let files: Vec<PathBuf> = task::spawn_blocking(|| {
+        WalkDir::new(".")
+            .sort_by_file_name()
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_file())
+            .map(|e| e.path().to_path_buf())
+            .collect()
+    })
+    .await
+    .unwrap();
+
+    log::info!("Found {} files. Starting upload...", files.len());
+
+    for path in files {
+        // let Ok(input_file) = InputFile::file(&path) else {
+        //     continue;
+        // };
+
+        let input_file = InputFile::file(&path);
+        let relative_str = path.display().to_string();
+
+        let ext = path
+            .extension()
+            .and_then(|os| os.to_str())
+            .map(|s| s.to_lowercase())
+            .unwrap_or_default();
+
+        let is_image = ["jpg", "jpeg", "png"].contains(&ext.as_str());
+        let is_video = [
+            "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "mpg", "mpeg", "3gp",
+        ]
+        .contains(&ext.as_str());
+
+        let send_result = if is_image {
+            bot.send_photo(chat_id.clone(), input_file.clone())
+                // .caption(relative_str.strip_prefix("./").unwrap())
+                .await
+        } else if is_video {
+            let thumbnail = generate_thumbnail(path.to_string_lossy().to_string()).await;
+            let (width, height, duration) =
+                get_video_metadata(path.to_string_lossy().to_string()).await;
+
+            let mut req = bot
+                .send_video(chat_id.clone(), input_file.clone())
+                .caption(get_caption(path).await)
+                .supports_streaming(true);
+
+            if let Some(thumb) = thumbnail {
+                req = req.thumbnail(thumb);
+            }
+            if let Some(w) = width {
+                req = req.width(w as u32);
+            }
+            if let Some(h) = height {
+                req = req.height(h as u32);
+            }
+            if let Some(d) = duration {
+                req = req.duration(d as u32);
             }
 
-            let chat_id = msg.chat.id; // Uploads go to the chat where you sent the command
-            bot.send_message(chat_id, format!("{chat_id}")).await.ok();
+            req.await
+        } else {
+            continue;
+        };
 
-            bot.send_message(
-                chat_id,
-                "Scanning current directory recursively for files...",
-            )
-            .await
-            .ok();
-
-            let files: Vec<PathBuf> = task::spawn_blocking(|| {
-                WalkDir::new(".")
-                    .into_iter()
-                    .filter_map(|e| e.ok())
-                    .filter(|e| e.path().is_file())
-                    .map(|e| e.path().to_path_buf())
-                    .collect()
-            })
-            .await
-            .unwrap();
-
-            bot.send_message(
-                chat_id,
-                format!("Found {} files. Starting upload...", files.len()),
-            )
-            .await
-            .ok();
-
-            for path in files {
-                // let Ok(input_file) = InputFile::file(&path) else {
-                //     continue;
-                // };
-
-                let input_file = InputFile::file(&path);
-                let relative_str = path.display().to_string();
-
-                let ext = path
-                    .extension()
-                    .and_then(|os| os.to_str())
-                    .map(|s| s.to_lowercase())
-                    .unwrap_or_default();
-
-                let is_image =
-                    ["jpg", "jpeg", "png", "webp", "bmp", "tiff", "ico"].contains(&ext.as_str());
-                let is_gif = ext == "gif" || ext == "gifv";
-                let is_video = [
-                    "mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "mpg", "mpeg", "3gp",
-                ]
-                .contains(&ext.as_str());
-                let is_audio = ["mp3", "wav", "ogg", "flac", "aac", "m4a", "opus", "wma"]
-                    .contains(&ext.as_str());
-
-                let send_result = if is_gif {
-                    bot.send_animation(chat_id, input_file.clone())
-                        .caption(relative_str.strip_prefix("./").unwrap())
-                        .await
-                } else if is_image {
-                    bot.send_photo(chat_id, input_file.clone())
-                        .caption(relative_str.strip_prefix("./").unwrap())
-                        .await
-                } else if is_video {
-                    let thumbnail = generate_thumbnail(path.to_string_lossy().to_string()).await;
-                    let (width, height, duration) =
-                        get_video_metadata(path.to_string_lossy().to_string()).await;
-
-                    let mut req = bot
-                        .send_video(chat_id, input_file.clone())
-                        .caption(relative_str.strip_prefix("./").unwrap())
-                        .supports_streaming(true);
-
-                    if let Some(thumb) = thumbnail {
-                        req = req.thumbnail(thumb);
-                    }
-                    if let Some(w) = width {
-                        req = req.width(w as u32);
-                    }
-                    if let Some(h) = height {
-                        req = req.height(h as u32);
-                    }
-                    if let Some(d) = duration {
-                        req = req.duration(d as u32);
-                    }
-
-                    req.await
-                } else if is_audio {
-                    bot.send_audio(chat_id, input_file.clone())
-                        .caption(relative_str.strip_prefix("./").unwrap())
-                        .await
-                } else {
-                    bot.send_document(chat_id, input_file.clone())
-                        .caption(relative_str.strip_prefix("./").unwrap())
-                        .await
-                };
-
-                if send_result.is_err() {
-                    let _ = bot
-                        .send_message(
-                            chat_id,
-                            format!(
-                                "Failed to upload: {}",
-                                relative_str.strip_prefix("./").unwrap()
-                            ),
-                        )
-                        .await;
-                }
-
-                // Respect rate limits – ~1 message/sec is very safe for media
-                sleep(Duration::from_millis(1100)).await;
-            }
-
-            bot.send_message(chat_id, "All files uploaded successfully!")
-                .await
-                .ok();
-            bot.send_message(chat_id, "All files uploaded successfully!")
-                .await
-                .ok();
+        if send_result.is_err() {
+            log::error!(
+                "Failed to upload: {}",
+                relative_str.strip_prefix("./").unwrap()
+            );
         }
 
-        respond(())
-    })
-    .await;
+        // Respect rate limits – ~1 message/sec is very safe for media
+        sleep(Duration::from_millis(1100)).await;
+    }
+
+    log::info!("All files uploaded successfully!");
 }
