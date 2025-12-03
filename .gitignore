@@ -10,3 +10,11 @@ devenv.local.yaml
 
 # pre-commit
 .pre-commit-config.yaml
+.env
+poopyrapey/td.binlog
+temp
+tmp
+thumbnail.jpg
+thumbnail2.jpg
+tqueue.binlog
+webhooks_db.binlog

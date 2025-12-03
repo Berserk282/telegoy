@@ -14,10 +14,8 @@
     mold.enable = true;
   };
   packages = with pkgs; [
-    lldb
     cargo-watch
-    zed-editor
-    vscode-json-languageserver
+    telegram-bot-api
   ];
   enterShell = ''
     export PKG_CONFIG_PATH="${pkgs.openssl.dev}/lib/pkgconfig"

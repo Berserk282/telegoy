@@ -19,8 +19,10 @@ async fn generate_thumbnail(video_path: String) -> Option<InputFile> {
                 "-i",
                 &video_path,
                 "-ss",
-                "00:00:02.000",
-                "-vframes",
+                "00:00:00.000",
+                "-frames:v",
+                "1",
+                "-update",
                 "1",
                 "-q:v",
                 "2",
@@ -38,7 +40,7 @@ async fn generate_thumbnail(video_path: String) -> Option<InputFile> {
                     let resized = img.thumbnail(320, 180);
                     let mut bytes = Vec::new();
                     resized
-                        .write_with_encoder(JpegEncoder::new_with_quality(&mut bytes, 90))
+                        .write_with_encoder(JpegEncoder::new_with_quality(&mut bytes, 100))
                         .ok();
                     bytes
                 })
@@ -133,13 +135,17 @@ async fn main() {
     pretty_env_logger::init();
     log::info!("Starting file uploader bot...");
 
-    let bot = Bot::from_env();
+    let bot = Bot::from_env().set_api_url(reqwest::Url::parse("http://localhost:8081").unwrap());
+
+    // bot.send_message(chat_id, "All files uploaded successfully!")
+    //     .await
+    //     .ok();
 
     teloxide::repl(bot, |bot: Bot, msg: Message| async move {
         if msg.text() == Some("/upload_all") {
             // Optional security – only you can trigger the upload
             // Change this to your Telegram user ID
-            if let Some(user) = msg.from() {
+            if let Some(user) = msg.from {
                 if user.id.0 != 6681565302 {
                     // <<< YOUR USER ID HERE
                     return respond(());
@@ -147,6 +153,7 @@ async fn main() {
             }
 
             let chat_id = msg.chat.id; // Uploads go to the chat where you sent the command
+            bot.send_message(chat_id, format!("{chat_id}")).await.ok();
 
             bot.send_message(
                 chat_id,
@@ -199,11 +206,11 @@ async fn main() {
 
                 let send_result = if is_gif {
                     bot.send_animation(chat_id, input_file.clone())
-                        .caption(&relative_str)
+                        .caption(relative_str.strip_prefix("./").unwrap())
                         .await
                 } else if is_image {
                     bot.send_photo(chat_id, input_file.clone())
-                        .caption(&relative_str)
+                        .caption(relative_str.strip_prefix("./").unwrap())
                         .await
                 } else if is_video {
                     let thumbnail = generate_thumbnail(path.to_string_lossy().to_string()).await;
@@ -212,7 +219,7 @@ async fn main() {
 
                     let mut req = bot
                         .send_video(chat_id, input_file.clone())
-                        .caption(&relative_str)
+                        .caption(relative_str.strip_prefix("./").unwrap())
                         .supports_streaming(true);
 
                     if let Some(thumb) = thumbnail {
@@ -231,17 +238,23 @@ async fn main() {
                     req.await
                 } else if is_audio {
                     bot.send_audio(chat_id, input_file.clone())
-                        .caption(&relative_str)
+                        .caption(relative_str.strip_prefix("./").unwrap())
                         .await
                 } else {
                     bot.send_document(chat_id, input_file.clone())
-                        .caption(&relative_str)
+                        .caption(relative_str.strip_prefix("./").unwrap())
                         .await
                 };
 
                 if send_result.is_err() {
                     let _ = bot
-                        .send_message(chat_id, format!("Failed to upload: {}", &relative_str))
+                        .send_message(
+                            chat_id,
+                            format!(
+                                "Failed to upload: {}",
+                                relative_str.strip_prefix("./").unwrap()
+                            ),
+                        )
                         .await;
                 }
 
@@ -249,6 +262,9 @@ async fn main() {
                 sleep(Duration::from_millis(1100)).await;
             }
 
+            bot.send_message(chat_id, "All files uploaded successfully!")
+                .await
+                .ok();
             bot.send_message(chat_id, "All files uploaded successfully!")
                 .await
                 .ok();
