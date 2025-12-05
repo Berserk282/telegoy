@@ -38,7 +38,7 @@ async fn generate_thumbnail(video_path: String) -> Option<InputFile> {
                 .ok()
                 .and_then(|r| r.decode().ok())
                 .map(|img: DynamicImage| {
-                    let resized = img.thumbnail(320, 180);
+                    let resized = img.thumbnail(320, 320);
                     let mut bytes = Vec::new();
                     resized
                         .write_with_encoder(JpegEncoder::new_with_quality(&mut bytes, 100))
