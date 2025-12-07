@@ -11,8 +11,6 @@ devenv.local.yaml
 # pre-commit
 .pre-commit-config.yaml
 .env
-temp
-tmp
 thumbnail.jpg
 thumbnail2.jpg
 tqueue.binlog

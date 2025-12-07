@@ -135,7 +135,17 @@ async fn get_caption(file_path: PathBuf) -> String {
     task::spawn_blocking(move || {
         // opens a file with the same name as the video file but with a .txt extension and returns its content as a string
         let caption_path = file_path.with_extension("txt");
-        return std::fs::read_to_string(&caption_path).unwrap();
+        return std::fs::read_to_string(&caption_path).unwrap_or_default();
+    })
+    .await
+    .unwrap_or(String::from(""))
+}
+
+async fn get_static_caption() -> String {
+    task::spawn_blocking(move || {
+        // opens a file with the same name as the video file but with a .txt extension and returns its content as a string
+        let static_caption_path = PathBuf::from("static_caption.txt");
+        return std::fs::read_to_string(&static_caption_path).unwrap_or_default();
     })
     .await
     .unwrap_or(String::from(""))
@@ -156,7 +166,10 @@ async fn main() {
     let input_file = InputFile::file(&path);
     // let relative_str = path.display().to_string();
 
-    let ext = path
+    let caption = get_caption(path.clone()).await;
+    let static_caption = get_static_caption().await;
+
+    let ext = &path
         .extension()
         .and_then(|os| os.to_str())
         .map(|s| s.to_lowercase())
@@ -178,7 +191,7 @@ async fn main() {
 
         let mut req = bot
             .send_video(chat_id.clone(), input_file.clone())
-            .caption(get_caption(path).await)
+            .caption(caption + static_caption.as_str())
             .supports_streaming(true);
 
         if let Some(thumb) = thumbnail {
@@ -205,6 +218,4 @@ async fn main() {
     //         relative_str.strip_prefix("./").unwrap()
     //     );
     // }
-
-    log::info!("File uploaded successfully");
 }
