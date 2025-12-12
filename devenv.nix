@@ -16,6 +16,7 @@
   packages = with pkgs; [
     cargo-watch
     telegram-bot-api
+    evcxr
   ];
   enterShell = ''
     export PKG_CONFIG_PATH="${pkgs.openssl.dev}/lib/pkgconfig"

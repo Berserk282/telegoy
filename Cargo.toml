@@ -11,5 +11,7 @@ tokio = { version =  "1.8", features = ["rt-multi-thread", "macros"] }
 image = "0.25.9"
 walkdir = "2"
 reqwest = "0.12.24"
-clap = "4.5.53"
-config = { version = "0.15.19", default-features = false, features = ["async", "toml"]}
+config = { version = "0.15.19", default-features = false, features = ["async", "toml"] }
+serde = "1.0.228"
+uuid = "1.19.0"
+clap = { version = "4.5.53", features = ["derive"] }

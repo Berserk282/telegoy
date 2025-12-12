@@ -16,7 +16,7 @@
         nativeBuildInputs = with pkgs; [
           pkg-config
         ];
-        cargoHash = "sha256-i876GaNNq4eI2udqyb0hd8KjbAaqcDY18iLwKUXXYFw=";
+        cargoHash = "sha256-nbD+dV/QAOUJnJmSWt2Goz4tUCVPyt+l8CW8cINhy2c=";
       };
     };
 }
