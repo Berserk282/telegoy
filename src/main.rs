@@ -25,7 +25,7 @@ fn default_api_url() -> String {
     "http://localhost:8081".to_string()
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Deserialize)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
     /// List of file paths to upload (space separated)
@@ -35,6 +35,13 @@ struct Cli {
     /// Optional Chat ID (overrides config/env)
     #[arg(short, long)]
     chat_id: Option<String>,
+
+    // API URL for local bot server
+    #[serde(default = "default_api_url")]
+    api_url: String,
+
+    #[arg(short, long)]
+    static_caption_path: Option<String>,
 }
 
 // ---------------------------
@@ -170,11 +177,11 @@ async fn get_caption(file_path: &PathBuf) -> String {
         .unwrap_or_default()
 }
 
-async fn get_static_caption() -> String {
-    tokio::fs::read_to_string("static_caption.txt")
-        .await
-        .unwrap_or_default()
-}
+// async fn get_static_caption() -> String {
+//     tokio::fs::read_to_string("static_caption.txt")
+//         .await
+//         .unwrap_or_default()
+// }
 
 // ---------------------------
 // 3. Main Logic
@@ -218,7 +225,9 @@ async fn main() {
 
     let bot = Bot::from_env().set_api_url(bot_url);
     let mut input_media_group: Vec<InputMedia> = Vec::new();
-    let static_cap = get_static_caption().await;
+    let static_cap = args
+        .static_caption_path
+        .unwrap_or("static_caption.txt".to_string());
 
     // 3. Process Files
     for path in args.files {
