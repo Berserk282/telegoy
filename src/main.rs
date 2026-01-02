@@ -174,11 +174,11 @@ async fn get_caption(file_path: &PathBuf) -> String {
         .unwrap_or_default()
 }
 
-// async fn get_static_caption() -> String {
-//     tokio::fs::read_to_string("static_caption.txt")
-//         .await
-//         .unwrap_or_default()
-// }
+async fn get_static_caption() -> String {
+    tokio::fs::read_to_string("static_caption.txt")
+        .await
+        .unwrap_or_default()
+}
 
 // ---------------------------
 // 3. Main Logic
@@ -224,7 +224,7 @@ async fn main() {
     let mut input_media_group: Vec<InputMedia> = Vec::new();
     let static_cap = args
         .static_caption_path
-        .unwrap_or("static_caption.txt".to_string());
+        .unwrap_or(get_static_caption().await);
 
     // 3. Process Files
     for path in args.files {
